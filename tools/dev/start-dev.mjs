@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export function buildDevProcesses() {
   return [
@@ -27,10 +29,12 @@ function prefixOutput(name, stream, chunk) {
 }
 
 export function startDevProcesses(processes = buildDevProcesses()) {
+  const isWindows = process.platform === "win32";
   const children = processes.map((processConfig) => {
     const child = spawn(processConfig.command, processConfig.args, {
       env: process.env,
-      stdio: ["ignore", "pipe", "pipe"]
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: isWindows
     });
     child.stdout.on("data", (chunk) => prefixOutput(processConfig.name, process.stdout, chunk));
     child.stderr.on("data", (chunk) => prefixOutput(processConfig.name, process.stderr, chunk));
@@ -61,6 +65,10 @@ export function startDevProcesses(processes = buildDevProcesses()) {
   return children;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isMain =
+  Boolean(process.argv[1]) &&
+  path.resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase();
+
+if (isMain) {
   startDevProcesses();
 }

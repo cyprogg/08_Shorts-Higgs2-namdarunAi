@@ -3,9 +3,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 function repoRoot() {
-  return path.resolve(new URL("../..", import.meta.url).pathname);
+  return path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 }
 
 function defaultNodePath() {
@@ -96,7 +97,11 @@ export function registerHiggsfieldMcp({
   return results;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isMain =
+  Boolean(process.argv[1]) &&
+  path.resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase();
+
+if (isMain) {
   const results = registerHiggsfieldMcp();
   for (const result of results) {
     process.stdout.write(`${result.state}: ${result.file}\n`);
