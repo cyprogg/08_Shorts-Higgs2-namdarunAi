@@ -26,7 +26,7 @@ def _bounded_path_entries(values: list[str], field_name: str) -> list[str]:
     for value in values:
         path_value = _bounded_non_empty(value, field_name, 1024)
         path = Path(path_value)
-        if path.is_absolute() or ".." in path.parts:
+        if path.is_absolute() or path_value.startswith(("/", "\\")) or ".." in path.parts:
             raise ValueError(f"{field_name} entries must be relative paths without traversal")
         safe_paths.append(path_value)
     return safe_paths

@@ -30,7 +30,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(detail || `Request failed with ${response.status}`);
+    let readableDetail = "";
+    if (detail) {
+      try {
+        const parsed = JSON.parse(detail) as { detail?: unknown };
+        if (typeof parsed.detail === "string") {
+          readableDetail = parsed.detail;
+        }
+      } catch {
+        // Plain-text API errors should be returned as-is below.
+      }
+    }
+    throw new Error(readableDetail || detail || `Request failed with ${response.status}`);
   }
 
   return response.json() as Promise<T>;

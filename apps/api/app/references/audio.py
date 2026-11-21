@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -24,7 +26,47 @@ def validate_audio_upload_name(filename: str) -> str:
 
 
 def default_runner(command: list[str]) -> tuple[int, str, str]:
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    target = command[0]
+    if sys.platform == "win32" and target in ("yt-dlp", "yt-dlp.exe", "yt-dlp.bat"):
+        pyenv_versions = Path.home() / ".pyenv" / "pyenv-win" / "versions"
+        concrete_executables = sorted(
+            pyenv_versions.glob("*/Scripts/yt-dlp.exe"),
+            reverse=True,
+        )
+        if concrete_executables:
+            executable = str(concrete_executables[0])
+            completed = subprocess.run(
+                [executable, *command[1:]],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            return completed.returncode, completed.stdout, completed.stderr
+
+    if target in ("yt-dlp", "yt-dlp.exe", "yt-dlp.bat"):
+        try:
+            import yt_dlp  # noqa: F401
+            resolved_command = [sys.executable, "-m", "yt_dlp", *command[1:]]
+            completed = subprocess.run(
+                resolved_command,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            return completed.returncode, completed.stdout, completed.stderr
+        except ImportError:
+            pass
+
+    executable = shutil.which(target) or target
+    is_windows_batch = sys.platform == "win32" and executable.lower().endswith((".bat", ".cmd"))
+    resolved_command = [executable, *command[1:]]
+    completed = subprocess.run(
+        resolved_command,
+        capture_output=True,
+        text=True,
+        check=False,
+        shell=is_windows_batch,
+    )
     return completed.returncode, completed.stdout, completed.stderr
 
 
