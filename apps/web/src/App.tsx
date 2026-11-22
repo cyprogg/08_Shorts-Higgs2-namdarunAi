@@ -85,9 +85,12 @@ export default function App() {
   const [videoTitle, setVideoTitle] = useState<string>("");
   const [selectedLlm, setSelectedLlm] = useState<string>(() => {
     try {
-      return localStorage.getItem("shorts_selected_llm") || "gemini-2.5-flash";
+      const saved = localStorage.getItem("shorts_selected_llm");
+      if (saved === "gemini-2.5-flash") return "gemini-3.8-flash";
+      if (saved === "gemini-1.5-pro") return "gemini-3.1-pro-preview";
+      return saved || "gemini-3.8-flash";
     } catch {
-      return "gemini-2.5-flash";
+      return "gemini-3.8-flash";
     }
   });
   const [error, setError] = useState<string | null>(null);
@@ -902,8 +905,8 @@ export default function App() {
                       outline: "none"
                     }}
                   >
-                    <option value="gemini-2.5-flash">⚡ Google Gemini 2.5 Flash (고속 / 추천)</option>
-                    <option value="gemini-1.5-pro">🧠 Google Gemini 1.5 Pro (심층 분석)</option>
+                    <option value="gemini-3.8-flash">⚡ Google Gemini 3.8 Flash (최신 고속 / 추천)</option>
+                    <option value="gemini-3.1-pro-preview">🧠 Google Gemini 3.1 Pro (심층 분석)</option>
                     <option value="gpt-4.1-mini">⚙️ OpenAI GPT-4.1 Mini (표준)</option>
                     <option value="gpt-4o">🌟 OpenAI GPT-4o (고지능)</option>
                   </select>

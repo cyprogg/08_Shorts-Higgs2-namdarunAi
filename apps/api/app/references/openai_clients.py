@@ -87,11 +87,17 @@ class OpenAITranscriptionClient:
 
 
 class GeminiTranscriptionClient:
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
+    def __init__(self, api_key: str, model: str = "gemini-3.8-flash"):
         if not api_key:
             raise ValueError("Gemini API key is missing")
         self.api_key = api_key
-        self.model = model or "gemini-2.5-flash"
+        model_name = (model or "").strip()
+        if not model_name or model_name in ("gemini-2.5-flash", "gemini-1.5-flash", "gemini-flash"):
+            self.model = "gemini-3.8-flash"
+        elif model_name in ("gemini-2.5-pro", "gemini-1.5-pro", "gemini-pro"):
+            self.model = "gemini-3.1-pro-preview"
+        else:
+            self.model = model_name
 
     def transcribe(self, audio_path: Path) -> dict:
         transcribe_path = audio_path
@@ -161,13 +167,17 @@ class OpenAIAnalysisClient:
 
 
 class GeminiAnalysisClient:
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
+    def __init__(self, api_key: str, model: str = "gemini-3.8-flash"):
         if not api_key:
             raise ValueError("Gemini API key is missing")
         self.api_key = api_key
-        self.model = model or "gemini-2.5-flash"
-        if not self.model.startswith("gemini-"):
-            self.model = "gemini-2.5-flash"
+        model_name = (model or "").strip()
+        if not model_name or model_name in ("gemini-2.5-flash", "gemini-1.5-flash", "gemini-flash"):
+            self.model = "gemini-3.8-flash"
+        elif model_name in ("gemini-2.5-pro", "gemini-1.5-pro", "gemini-pro"):
+            self.model = "gemini-3.1-pro-preview"
+        else:
+            self.model = model_name
 
     def analyze(self, prompt: str) -> dict:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"

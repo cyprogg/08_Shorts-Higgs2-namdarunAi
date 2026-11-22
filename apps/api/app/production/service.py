@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import re
 import shutil
@@ -13,6 +14,8 @@ from typing import Any
 
 import httpx
 from openai import OpenAI
+
+logger = logging.getLogger(__name__)
 
 from app.core.paths import find_repo_root
 from app.core.settings import AppSettings
@@ -156,6 +159,137 @@ def _get_audio_duration(file_path: Path) -> float:
     return 0.0
 
 
+def _run_qwen3_tts(project_dir: Path, settings: AppSettings, script_text: str, final_wav: Path) -> bool:
+    base_url = settings.qwen3_tts_base_url
+    if not base_url:
+        return False
+    try:
+        with httpx.Client(timeout=2.0) as client:
+            resp = client.get(f"{base_url.rstrip('/')}/")
+            if resp.status_code not in (200, 302, 404):
+                return False
+    except Exception:
+        return False
+
+    repo_root = find_repo_root()
+    ref_voice_path = Path(settings.reference_voice_path)
+    if not ref_voice_path.is_absolute():
+        ref_voice_path = repo_root / ref_voice_path
+    if not ref_voice_path.exists():
+        return False
+
+    try:
+        ref_file_info = _upload_file_to_gradio(base_url, ref_voice_path)
+        ref_text = settings.reference_voice_text
+        try:
+            transcribe_event_id = _call_gradio_api(base_url, "/transcribe_audio", [ref_file_info])
+            transcribe_res = _get_gradio_result(base_url, "/transcribe_audio", transcribe_event_id, timeout=30.0)
+            if transcribe_res and isinstance(transcribe_res, list) and transcribe_res[0]:
+                ref_text = str(transcribe_res[0]).strip()
+        except Exception:
+            pass
+
+        clone_data = [
+            ref_file_info,
+            ref_text,
+            script_text,
+            "Korean",
+            False,
+            "1.7B",
+            200,
+            0.0,
+            -1,
+        ]
+
+        event_id = _call_gradio_api(base_url, "/generate_voice_clone", clone_data)
+        result_data = _get_gradio_result(base_url, "/generate_voice_clone", event_id)
+
+        audio_file_info = result_data[0]
+        if not audio_file_info:
+            return False
+
+        remote_path = audio_file_info.get("path")
+        audio_download_url = f"{base_url.rstrip('/')}/gradio_api/file={remote_path}"
+
+        temp_wav = project_dir / "temp_tts_raw.wav"
+        r = httpx.get(audio_download_url, timeout=60.0)
+        if r.status_code != 200:
+            return False
+        temp_wav.write_bytes(r.content)
+
+        try:
+            _change_audio_speed(temp_wav, final_wav, rate=SPEED_RATE)
+        finally:
+            if temp_wav.exists():
+                temp_wav.unlink()
+        return True
+    except Exception as exc:
+        logger.warning(f"Qwen3-TTS generation failed: {exc}")
+        return False
+
+
+def _run_edge_tts(project_dir: Path, script_text: str, final_wav: Path) -> bool:
+    try:
+        import asyncio
+        import edge_tts
+
+        temp_mp3 = project_dir / "temp_edge_raw.mp3"
+        try:
+            async def _synth():
+                # Microsoft Edge neural TTS with +20% speed (1.2x)
+                communicate = edge_tts.Communicate(script_text, voice="ko-KR-SunHiNeural", rate="+20%")
+                await communicate.save(str(temp_mp3))
+
+            asyncio.run(_synth())
+
+            ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+            cmd = [
+                ffmpeg_bin,
+                "-y",
+                "-i",
+                str(temp_mp3),
+                "-ar",
+                "24000",
+                "-ac",
+                "1",
+                str(final_wav),
+            ]
+            res = subprocess.run(cmd, capture_output=True, check=False)
+            if res.returncode == 0 and final_wav.exists() and final_wav.stat().st_size > 0:
+                logger.info("Successfully generated 1.2x TTS audio using Edge-TTS")
+                return True
+        finally:
+            if temp_mp3.exists():
+                temp_mp3.unlink()
+    except Exception as exc:
+        logger.warning(f"Edge-TTS failed: {exc}")
+    return False
+
+
+def _run_openai_tts(project_dir: Path, settings: AppSettings, script_text: str, final_wav: Path) -> bool:
+    if not settings.openai_api_key:
+        return False
+    try:
+        client = OpenAI(api_key=settings.openai_api_key)
+        response = client.audio.speech.create(
+            model="tts-1",
+            voice="alloy",
+            input=script_text,
+        )
+        temp_raw = project_dir / "temp_openai_raw.mp3"
+        try:
+            temp_raw.write_bytes(response.content)
+            _change_audio_speed(temp_raw, final_wav, rate=SPEED_RATE)
+            logger.info("Successfully generated 1.2x TTS audio using OpenAI TTS")
+            return True
+        finally:
+            if temp_raw.exists():
+                temp_raw.unlink()
+    except Exception as exc:
+        logger.warning(f"OpenAI TTS failed: {exc}")
+    return False
+
+
 def generate_tts_for_project(project_dir: Path, settings: AppSettings) -> Path:
     final_script_path = project_dir / "final_script.md"
     if not final_script_path.exists():
@@ -165,62 +299,23 @@ def generate_tts_for_project(project_dir: Path, settings: AppSettings) -> Path:
     if not script_text:
         raise ValueError("final_script.md 대본 내용이 비어 있습니다.")
 
-    repo_root = find_repo_root()
-    ref_voice_path = Path(settings.reference_voice_path)
-    if not ref_voice_path.is_absolute():
-        ref_voice_path = repo_root / ref_voice_path
-    if not ref_voice_path.exists():
-        raise FileNotFoundError(f"레퍼런스 음성 파일을 찾을 수 없습니다: {ref_voice_path}")
-
-    base_url = settings.qwen3_tts_base_url
-    ref_file_info = _upload_file_to_gradio(base_url, ref_voice_path)
-
-    # 피노키오 TTS 서버의 transcribe_audio로 레퍼런스 음성 텍스트 자동 추출 시도 (실패 시 settings 기본값 fallback)
-    ref_text = settings.reference_voice_text
-    try:
-        transcribe_event_id = _call_gradio_api(base_url, "/transcribe_audio", [ref_file_info])
-        transcribe_res = _get_gradio_result(base_url, "/transcribe_audio", transcribe_event_id, timeout=30.0)
-        if transcribe_res and isinstance(transcribe_res, list) and transcribe_res[0]:
-            ref_text = str(transcribe_res[0]).strip()
-    except Exception:
-        pass
-
-    clone_data = [
-        ref_file_info,
-        ref_text,
-        script_text,
-        "Korean",
-        False,
-        "1.7B",
-        200,
-        0.0,
-        -1,
-    ]
-
-    event_id = _call_gradio_api(base_url, "/generate_voice_clone", clone_data)
-    result_data = _get_gradio_result(base_url, "/generate_voice_clone", event_id)
-
-    audio_file_info = result_data[0]
-    if not audio_file_info:
-        raise RuntimeError("TTS 음성 생성 응답에 파일 정보가 없습니다.")
-
-    remote_path = audio_file_info.get("path")
-    audio_download_url = f"{base_url.rstrip('/')}/gradio_api/file={remote_path}"
-
-    temp_wav = project_dir / "temp_tts_raw.wav"
-    r = httpx.get(audio_download_url, timeout=60.0)
-    if r.status_code != 200:
-        raise RuntimeError(f"생성된 음성 다운로드 실패 ({r.status_code})")
-    temp_wav.write_bytes(r.content)
-
     final_wav = project_dir / TTS_AUDIO_FILENAME
-    try:
-        _change_audio_speed(temp_wav, final_wav, rate=SPEED_RATE)
-    finally:
-        if temp_wav.exists():
-            temp_wav.unlink()
 
-    return final_wav
+    # 1. 로컬 Qwen3-TTS 서버 가동 여부 확인 후 우선 사용
+    if _run_qwen3_tts(project_dir, settings, script_text, final_wav):
+        return final_wav
+
+    # 2. 로컬 서버 부재 시 고품질 Edge-TTS (1.2배속 한국어 신경망 성우) 자동 대체
+    if _run_edge_tts(project_dir, script_text, final_wav):
+        return final_wav
+
+    # 3. Edge-TTS 불가 시 OpenAI TTS 자동 대체
+    if _run_openai_tts(project_dir, settings, script_text, final_wav):
+        return final_wav
+
+    raise RuntimeError(
+        f"TTS 음성 생성 실패: Qwen3-TTS 로컬 서버({settings.qwen3_tts_base_url})에 연결할 수 없으며, Edge-TTS 및 OpenAI TTS 호출도 실패했습니다."
+    )
 
 
 def _refine_stt_text_with_llm(

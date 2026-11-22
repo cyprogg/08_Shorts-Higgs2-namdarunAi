@@ -304,7 +304,7 @@ describe("App", () => {
       expect(generateScriptCandidatesMock).toHaveBeenCalledWith(
         project.project_id,
         undefined,
-        "gemini-2.5-flash"
+        "gemini-3.8-flash"
       )
     );
   });
@@ -316,7 +316,7 @@ describe("App", () => {
     await screen.findByRole("heading", { name: project.display_name });
     const select = screen.getByRole("combobox", { name: /대본 및 분석 LLM 모델 선택/i });
     expect(select).toBeInTheDocument();
-    expect(select).toHaveValue("gemini-2.5-flash");
+    expect(select).toHaveValue("gemini-3.8-flash");
 
     await user.selectOptions(select, "gpt-4o");
     expect(select).toHaveValue("gpt-4o");

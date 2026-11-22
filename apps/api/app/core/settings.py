@@ -24,7 +24,7 @@ class AppSettings(BaseModel):
     youtube_api_key: str = ""
     higgsfield_api_key: str = ""
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.8-flash"
     gemini_image_model: str = "imagen-3.0-generate-002"
     qwen3_tts_base_url: str = "http://127.0.0.1:7860"
     reference_voice_path: str = "assets/reference_voice/reference_voice.mp3"
