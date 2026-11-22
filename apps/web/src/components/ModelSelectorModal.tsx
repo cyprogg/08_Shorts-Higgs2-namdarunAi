@@ -68,6 +68,19 @@ export const IMAGE_MODELS: readonly ModelOption[] = [
     iconType: "gpt"
   },
 
+  // === Google Gemini API 직접 연동 모델 ===
+  {
+    id: "gemini_imagen_3",
+    name: "Google Imagen 3 (Gemini API)",
+    provider: "Google Gemini Direct",
+    platform: "flow",
+    description: "Google Gemini API 키로 직접 생성하는 9:16 초고화질 Imagen 3 모델",
+    badge: "Gemini 공식",
+    badgeType: "recommended",
+    tags: ["Gemini API", "9:16 특화", "포토리얼", "고화질"],
+    iconType: "google"
+  },
+
   // === Google Flow CLI 이미지 모델 ===
   {
     id: "flow_nano_pro",

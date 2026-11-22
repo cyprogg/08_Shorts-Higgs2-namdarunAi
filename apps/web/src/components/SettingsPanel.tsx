@@ -34,6 +34,12 @@ export function SettingsPanel({ settings }: SettingsPanelProps) {
             <dt>Higgsfield API key</dt>
             <dd>{keyStatus(settings.higgsfield_api_key)}</dd>
           </div>
+          {settings.gemini_api_key !== undefined && (
+            <div>
+              <dt>Gemini API key</dt>
+              <dd>{keyStatus(settings.gemini_api_key)}</dd>
+            </div>
+          )}
           <div>
             <dt>Qwen3-TTS</dt>
             <dd>{settings.qwen3_tts_base_url}</dd>

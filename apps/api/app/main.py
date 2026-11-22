@@ -54,6 +54,7 @@ def create_app(
             "openai_api_key": bool(settings.openai_api_key),
             "youtube_api_key": bool(settings.youtube_api_key),
             "higgsfield_api_key": bool(settings.higgsfield_api_key),
+            "gemini_api_key": bool(settings.gemini_api_key),
             "qwen3_tts_base_url": settings.qwen3_tts_base_url,
             "reference_voice_path": settings.reference_voice_path,
             "reference_voice_text": bool(settings.reference_voice_text),
@@ -61,6 +62,18 @@ def create_app(
             "bgm_volume": settings.bgm_volume,
             "output_dir": settings.output_dir,
         }
+
+    def resolve_analysis_client(api_key: str, model: str):
+        if settings.gemini_api_key and (not api_key or "gemini" in str(model).lower() or not settings.openai_api_key):
+            from app.references.openai_clients import GeminiAnalysisClient
+            return GeminiAnalysisClient(api_key=settings.gemini_api_key, model=settings.gemini_model)
+        return analysis_client_factory(api_key, model)
+
+    def resolve_transcription_client(api_key: str, model: str):
+        if transcription_client_factory is OpenAITranscriptionClient and settings.gemini_api_key and not settings.openai_api_key:
+            from app.references.openai_clients import GeminiTranscriptionClient
+            return GeminiTranscriptionClient(api_key=settings.gemini_api_key, model=settings.gemini_model)
+        return transcription_client_factory(api_key, model)
 
     app.include_router(create_projects_router(outputs_dir_provider))
     app.include_router(create_jobs_router(outputs_dir_provider))
@@ -70,11 +83,11 @@ def create_app(
             settings_provider,
             youtube_client_factory,
             audio_extractor,
-            transcription_client_factory,
-            analysis_client_factory,
+            resolve_transcription_client,
+            resolve_analysis_client,
         )
     )
-    app.include_router(create_scripts_router(outputs_dir_provider, settings_provider, analysis_client_factory))
+    app.include_router(create_scripts_router(outputs_dir_provider, settings_provider, resolve_analysis_client))
     app.include_router(create_production_router(outputs_dir_provider, settings_provider))
     return app
 

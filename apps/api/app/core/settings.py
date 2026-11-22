@@ -23,6 +23,9 @@ class AppSettings(BaseModel):
     openai_api_key: str = ""
     youtube_api_key: str = ""
     higgsfield_api_key: str = ""
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_image_model: str = "imagen-3.0-generate-002"
     qwen3_tts_base_url: str = "http://127.0.0.1:7860"
     reference_voice_path: str = "assets/reference_voice/reference_voice.mp3"
     reference_voice_text: str = (
@@ -54,6 +57,9 @@ ENV_TO_FIELD = {
     "OPENAI_API_KEY": "openai_api_key",
     "YOUTUBE_API_KEY": "youtube_api_key",
     "HIGGSFIELD_API_KEY": "higgsfield_api_key",
+    "GEMINI_API_KEY": "gemini_api_key",
+    "GEMINI_MODEL": "gemini_model",
+    "GEMINI_IMAGE_MODEL": "gemini_image_model",
     "QWEN3_TTS_BASE_URL": "qwen3_tts_base_url",
     "REFERENCE_VOICE_PATH": "reference_voice_path",
     "REFERENCE_VOICE_TEXT": "reference_voice_text",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -1011,6 +1012,24 @@ def generate_master_asset_sheet(
         except Exception as e:
             print(f"[Google Flow Master Asset Sheet Error] {e}")
 
+    # 0.5. Google Gemini Imagen 모델 시도
+    if not has_generated and (
+        model in ("gemini_imagen", "gemini_imagen_3", "imagen3", "imagen-3.0-generate-002", "gemini")
+        or (settings.gemini_api_key and not settings.higgsfield_api_key and model not in FLOW_IMAGE_MODELS and model != "dall-e-3")
+    ):
+        try:
+            _run_gemini_image_generate(
+                prompt=sheet_prompt,
+                output_path=master_sheet_path,
+                api_key=settings.gemini_api_key,
+                aspect_ratio="16:9",
+                model=settings.gemini_image_model,
+            )
+            if master_sheet_path.exists() and master_sheet_path.stat().st_size > 1000:
+                has_generated = True
+        except Exception as e:
+            print(f"[Gemini Master Asset Sheet Error] {e}")
+
     # 1. 힉스필드 모델 시도
     if not has_generated and model != "dall-e-3":
         try:
@@ -1358,6 +1377,51 @@ def _clean_watermark_if_available(file_path: Path) -> None:
             temp_cleaned.unlink(missing_ok=True)
     except Exception:
         pass
+
+
+def _run_gemini_image_generate(
+    prompt: str,
+    output_path: Path,
+    api_key: str,
+    aspect_ratio: str = "9:16",
+    model: str = "imagen-3.0-generate-002",
+) -> Path:
+    """Google Gemini API (Imagen 3)를 이용한 이미지 생성"""
+    if not api_key:
+        raise ValueError("Gemini API key is required for Gemini image generation")
+
+    candidate_models = [model, "imagen-3.0-generate-002", "imagen-3.0-fast-generate-001"]
+    seen = set()
+    models_to_try = [m for m in candidate_models if m and not (m in seen or seen.add(m))]
+
+    last_error = "Unknown error"
+    for target_model in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:predict?key={api_key}"
+        payload = {
+            "instances": [{"prompt": prompt}],
+            "parameters": {
+                "sampleCount": 1,
+                "aspectRatio": aspect_ratio,
+                "outputOptions": {"mimeType": "image/png"},
+            },
+        }
+        try:
+            with httpx.Client(timeout=90.0) as client:
+                resp = client.post(url, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    predictions = data.get("predictions", [])
+                    if predictions and "bytesBase64Encoded" in predictions[0]:
+                        b64_data = predictions[0]["bytesBase64Encoded"]
+                        img_bytes = base64.b64decode(b64_data)
+                        output_path.parent.mkdir(parents=True, exist_ok=True)
+                        output_path.write_bytes(img_bytes)
+                        return output_path
+                last_error = f"Gemini Imagen API ({target_model}) status {resp.status_code}: {resp.text}"
+        except Exception as e:
+            last_error = str(e)
+
+    raise RuntimeError(f"Gemini Imagen image generation failed: {last_error}")
 
 
 def _run_flow_image_generate(
@@ -1890,6 +1954,24 @@ def generate_scene_image_for_project(
                 return _finalize_image(start_image_path)
         except Exception as e:
             print(f"[Google Flow Image Error] {e}")
+
+    # 0.5. Google Gemini Imagen 모델 시도
+    if (
+        model_name in ("gemini_imagen", "gemini_imagen_3", "imagen3", "imagen-3.0-generate-002", "gemini")
+        or (settings.gemini_api_key and not settings.higgsfield_api_key and model_name not in FLOW_IMAGE_MODELS and model_name != "dall-e-3")
+    ):
+        try:
+            _run_gemini_image_generate(
+                prompt=effective_prompt,
+                output_path=start_image_path,
+                api_key=settings.gemini_api_key,
+                aspect_ratio="9:16",
+                model=settings.gemini_image_model,
+            )
+            if start_image_path.exists() and start_image_path.stat().st_size > 1000:
+                return _finalize_image(start_image_path)
+        except Exception as e:
+            print(f"[Gemini Image Generate Error - Scene {scene_id}] {e}")
 
     # 1. 힉스필드 모델 시도 (nano_banana_pro, gpt_image_2, seedream_v5_pro, flux_3_image 등)
     if model_name != "dall-e-3":
