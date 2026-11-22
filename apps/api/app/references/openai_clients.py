@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import json
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Protocol
 
@@ -9,6 +11,34 @@ import httpx
 from openai import OpenAI
 
 from app.references.files import write_reference_raw_stt, write_reference_script
+
+
+def compress_audio_for_transcription(audio_path: Path) -> Path | None:
+    ffmpeg_bin = shutil.which("ffmpeg")
+    if not ffmpeg_bin:
+        return None
+    temp_dir = audio_path.parent
+    temp_mp3 = temp_dir / f".compressed_{audio_path.stem}.mp3"
+    cmd = [
+        ffmpeg_bin,
+        "-y",
+        "-i",
+        str(audio_path),
+        "-ar",
+        "16000",
+        "-ac",
+        "1",
+        "-b:a",
+        "48k",
+        str(temp_mp3),
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, check=False)
+        if res.returncode == 0 and temp_mp3.exists() and temp_mp3.stat().st_size > 0:
+            return temp_mp3
+    except Exception:
+        pass
+    return None
 
 
 class TranscriptionClient(Protocol):
@@ -24,16 +54,36 @@ class OpenAITranscriptionClient:
         self.model = model
 
     def transcribe(self, audio_path: Path) -> dict:
-        with audio_path.open("rb") as audio_file:
-            result = self.client.audio.transcriptions.create(
-                model=self.model,
-                file=audio_file,
-                response_format="verbose_json",
-                timestamp_granularities=["segment"],
-            )
-        if hasattr(result, "model_dump"):
-            return result.model_dump()
-        return dict(result)
+        transcribe_path = audio_path
+        cleanup_temp = False
+
+        if audio_path.stat().st_size > 24 * 1024 * 1024:
+            compressed = compress_audio_for_transcription(audio_path)
+            if compressed and compressed.exists():
+                transcribe_path = compressed
+                cleanup_temp = True
+            elif audio_path.stat().st_size > 25 * 1024 * 1024:
+                raise ValueError(
+                    f"오디오 파일 크기({audio_path.stat().st_size // (1024*1024)}MB)가 Whisper API 한도(25MB)를 초과했습니다. ffmpeg를 사용하거나 더 짧은 영상을 선택해주세요."
+                )
+
+        try:
+            with transcribe_path.open("rb") as audio_file:
+                result = self.client.audio.transcriptions.create(
+                    model=self.model,
+                    file=audio_file,
+                    response_format="verbose_json",
+                    timestamp_granularities=["segment"],
+                )
+            if hasattr(result, "model_dump"):
+                return result.model_dump()
+            return dict(result)
+        finally:
+            if cleanup_temp and transcribe_path.exists():
+                try:
+                    transcribe_path.unlink()
+                except OSError:
+                    pass
 
 
 class GeminiTranscriptionClient:
@@ -44,32 +94,49 @@ class GeminiTranscriptionClient:
         self.model = model or "gemini-2.5-flash"
 
     def transcribe(self, audio_path: Path) -> dict:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
-        audio_bytes = audio_path.read_bytes()
-        b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
-        mime = "audio/wav" if audio_path.suffix.lower() == ".wav" else "audio/mp3"
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": "Transcribe the following audio exactly in Korean without any extra explanation. Only return the verbatim transcribed speech."},
-                        {"inlineData": {"mimeType": mime, "data": b64_audio}},
-                    ]
-                }
-            ]
-        }
-        with httpx.Client(timeout=180.0) as client:
-            resp = client.post(url, json=payload)
-            if resp.status_code != 200:
-                raise RuntimeError(f"Gemini transcription failed ({resp.status_code}): {resp.text}")
-            data = resp.json()
+        transcribe_path = audio_path
+        cleanup_temp = False
 
-        candidates = data.get("candidates", [])
-        if not candidates:
-            raise RuntimeError(f"Gemini transcription returned no candidates: {data}")
-        parts = candidates[0].get("content", {}).get("parts", [])
-        text = (parts[0].get("text", "") if parts else "").strip()
-        return {"text": text, "segments": [{"text": text, "start": 0.0, "end": 0.0}]}
+        if audio_path.stat().st_size > 18 * 1024 * 1024:
+            compressed = compress_audio_for_transcription(audio_path)
+            if compressed and compressed.exists():
+                transcribe_path = compressed
+                cleanup_temp = True
+
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+            audio_bytes = transcribe_path.read_bytes()
+            b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
+            suffix = transcribe_path.suffix.lower()
+            mime = "audio/mp3" if suffix == ".mp3" else "audio/wav" if suffix == ".wav" else "audio/mpeg"
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": "Transcribe the following audio exactly in Korean without any extra explanation. Only return the verbatim transcribed speech."},
+                            {"inlineData": {"mimeType": mime, "data": b64_audio}},
+                        ]
+                    }
+                ]
+            }
+            with httpx.Client(timeout=180.0) as client:
+                resp = client.post(url, json=payload)
+                if resp.status_code != 200:
+                    raise RuntimeError(f"Gemini transcription failed ({resp.status_code}): {resp.text}")
+                data = resp.json()
+
+            candidates = data.get("candidates", [])
+            if not candidates:
+                raise RuntimeError(f"Gemini transcription returned no candidates: {data}")
+            parts = candidates[0].get("content", {}).get("parts", [])
+            text = (parts[0].get("text", "") if parts else "").strip()
+            return {"text": text, "segments": [{"text": text, "start": 0.0, "end": 0.0}]}
+        finally:
+            if cleanup_temp and transcribe_path.exists():
+                try:
+                    transcribe_path.unlink()
+                except OSError:
+                    pass
 
 
 class AnalysisClient(Protocol):

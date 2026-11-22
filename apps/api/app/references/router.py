@@ -433,7 +433,21 @@ def create_references_router(
                 settings.openai_api_key,
                 settings.openai_transcription_model,
             )
-            raw_stt = client.transcribe(audio_path)
+            try:
+                raw_stt = client.transcribe(audio_path)
+            except Exception as primary_exc:
+                if settings.gemini_api_key:
+                    try:
+                        from app.references.openai_clients import GeminiTranscriptionClient
+                        gemini_client = GeminiTranscriptionClient(
+                            api_key=settings.gemini_api_key,
+                            model=settings.gemini_model,
+                        )
+                        raw_stt = gemini_client.transcribe(audio_path)
+                    except Exception:
+                        raise primary_exc
+                else:
+                    raise primary_exc
             script = write_reference_stt_outputs(path, raw_stt)
             clear_analysis_state(outputs, path, project_id)
             project = read_project(outputs, project_id)
@@ -466,6 +480,15 @@ def create_references_router(
         except Exception as exc:
             message = provider_error_message(exc)
             fail_job(outputs, project_id, job_id, message)
+            try:
+                project = read_project(outputs, project_id)
+                for status in project.step_statuses:
+                    if status.name == "STT":
+                        status.state = "failed"
+                        status.message = message
+                save_project(outputs, project)
+            except Exception:
+                pass
             raise HTTPException(status_code=400, detail=message) from exc
 
     @router.post("/analyze")
