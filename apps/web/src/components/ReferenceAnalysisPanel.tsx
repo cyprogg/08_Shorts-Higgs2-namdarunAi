@@ -2,19 +2,38 @@ interface ReferenceAnalysisPanelProps {
   readonly analysisMarkdown: string | null;
   readonly isBusy: boolean;
   readonly onAnalyze: () => void;
+  readonly selectedLlm?: string;
 }
 
 export function ReferenceAnalysisPanel({
   analysisMarkdown,
   isBusy,
-  onAnalyze
+  onAnalyze,
+  selectedLlm
 }: ReferenceAnalysisPanelProps) {
   return (
     <section className="panel analysis-panel" aria-labelledby="analysis-title">
       <div className="section-header">
         <div>
           <p className="eyebrow">Analysis</p>
-          <h2 id="analysis-title">Reference report</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <h2 id="analysis-title">Reference report</h2>
+            {selectedLlm && (
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  background: "#f0fdf4",
+                  color: "#166534",
+                  border: "1px solid #bbf7d0",
+                  padding: "2px 8px",
+                  borderRadius: "10px",
+                  fontWeight: 600
+                }}
+              >
+                🤖 {selectedLlm}
+              </span>
+            )}
+          </div>
         </div>
         <button className="secondary-button" disabled={isBusy} onClick={onAnalyze} type="button">
           {isBusy ? (

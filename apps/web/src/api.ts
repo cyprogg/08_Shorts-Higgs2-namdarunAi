@@ -137,11 +137,15 @@ export function runReferenceStt(projectId: string): Promise<{ reference_script: 
 }
 
 export function runReferenceAnalysis(
-  projectId: string
+  projectId: string,
+  model?: string
 ): Promise<Pick<ReferenceState, "analysis" | "analysis_markdown">> {
   return request<Pick<ReferenceState, "analysis" | "analysis_markdown">>(
     `/api/projects/${encodeURIComponent(projectId)}/reference/analyze`,
-    { method: "POST" }
+    {
+      method: "POST",
+      body: model ? JSON.stringify({ model }) : undefined
+    }
   );
 }
 
@@ -151,13 +155,14 @@ export function fetchScriptsState(projectId: string): Promise<ScriptsState> {
 
 export function generateScriptCandidates(
   projectId: string,
-  feedback?: string
+  feedback?: string,
+  model?: string
 ): Promise<{ candidates: readonly ScriptCandidate[] }> {
   return request<{ candidates: readonly ScriptCandidate[] }>(
     `/api/projects/${encodeURIComponent(projectId)}/scripts/candidates`,
     {
       method: "POST",
-      body: JSON.stringify({ feedback: feedback ?? "" })
+      body: JSON.stringify({ feedback: feedback ?? "", model: model ?? "" })
     }
   );
 }
@@ -177,7 +182,8 @@ export function selectScriptCandidate(
 
 export function finalizeScript(
   projectId: string,
-  feedback: string
+  feedback: string,
+  model?: string
 ): Promise<{
   selected_candidate_id: string;
   feedback: string;
@@ -191,7 +197,7 @@ export function finalizeScript(
     tts_validation: TtsValidationResult;
   }>(`/api/projects/${encodeURIComponent(projectId)}/scripts/finalize`, {
     method: "POST",
-    body: JSON.stringify({ feedback })
+    body: JSON.stringify({ feedback, model: model ?? "" })
   });
 }
 

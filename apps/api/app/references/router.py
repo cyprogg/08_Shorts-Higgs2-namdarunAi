@@ -31,6 +31,7 @@ from app.references.files import (
     write_selected_reference,
 )
 from app.references.models import (
+    AnalyzeReferenceRequest,
     DirectReferenceRequest,
     ReferenceSearchRequest,
     SelectReferenceRequest,
@@ -470,6 +471,7 @@ def create_references_router(
     @router.post("/analyze")
     def analyze_reference(
         project_id: str,
+        payload: AnalyzeReferenceRequest | None = None,
         outputs: Path = Depends(outputs_dir_provider),
         settings: AppSettings = Depends(settings_provider),
     ):
@@ -480,25 +482,33 @@ def create_references_router(
             if not script_path.exists():
                 raise HTTPException(status_code=400, detail="Reference script is missing")
             script = script_path.read_text(encoding="utf-8")
+
+            selected_model = (payload.model if payload and payload.model else "").strip()
+            if not selected_model:
+                selected_model = settings.gemini_model if (settings.gemini_api_key and not settings.openai_api_key) else settings.openai_analysis_model
+            is_gemini = "gemini" in selected_model.lower()
+            provider_name = "gemini" if is_gemini else "openai"
+
             job = append_job(
                 outputs,
                 project_id,
                 "reference_analysis",
                 "Analyze reference script",
                 input_paths=[REFERENCE_SCRIPT_FILE],
-                provider="openai",
-                command=settings.openai_analysis_model,
+                provider=provider_name,
+                command=selected_model,
             )
             job_id = job.job_id
-            update_job_state(outputs, project_id, job.job_id, "running", "Analyzing reference script")
+            update_job_state(outputs, project_id, job.job_id, "running", f"Analyzing reference script ({selected_model})")
             clear_analysis_state(
                 outputs,
                 path,
                 project_id,
                 analysis_state="running",
-                analysis_message="Analyzing reference script.",
+                analysis_message=f"Analyzing reference script ({selected_model}).",
             )
-            client = analysis_client_factory(settings.openai_api_key, settings.openai_analysis_model)
+            api_key = settings.gemini_api_key if is_gemini else settings.openai_api_key
+            client = analysis_client_factory(api_key, selected_model)
             analysis = client.analyze(build_analysis_prompt(script))
             markdown = write_reference_analysis(path, analysis)
             project = read_project(outputs, project_id)

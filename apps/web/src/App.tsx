@@ -83,7 +83,23 @@ export default function App() {
   const [isScriptBusy, setIsScriptBusy] = useState(false);
   const [isProductionBusy, setIsProductionBusy] = useState(false);
   const [videoTitle, setVideoTitle] = useState<string>("");
+  const [selectedLlm, setSelectedLlm] = useState<string>(() => {
+    try {
+      return localStorage.getItem("shorts_selected_llm") || "gemini-2.5-flash";
+    } catch {
+      return "gemini-2.5-flash";
+    }
+  });
   const [error, setError] = useState<string | null>(null);
+
+  function handleLlmChange(model: string) {
+    setSelectedLlm(model);
+    try {
+      localStorage.setItem("shorts_selected_llm", model);
+    } catch {
+      // ignore
+    }
+  }
 
   useEffect(() => {
     if (selectedProject?.project_title) {
@@ -368,7 +384,7 @@ export default function App() {
     }
     setIsAnalysisBusy(true);
     try {
-      await runReferenceAnalysis(selectedProject.project_id);
+      await runReferenceAnalysis(selectedProject.project_id, selectedLlm);
       const [project, state] = await Promise.all([
         getProject(selectedProject.project_id),
         fetchReferenceState(selectedProject.project_id)
@@ -392,9 +408,7 @@ export default function App() {
     }
     const trimmed = feedback?.trim();
     void runScriptAction(() =>
-      trimmed
-        ? generateScriptCandidates(selectedProject.project_id, trimmed)
-        : generateScriptCandidates(selectedProject.project_id)
+      generateScriptCandidates(selectedProject.project_id, trimmed || undefined, selectedLlm)
     );
   }
 
@@ -410,7 +424,7 @@ export default function App() {
       return;
     }
     void runScriptAction(async () => {
-      const result = await finalizeScript(selectedProject.project_id, feedback);
+      const result = await finalizeScript(selectedProject.project_id, feedback, selectedLlm);
       const prod = await fetchProductionState(selectedProject.project_id);
       setProductionState(prod);
       return result;
@@ -845,6 +859,58 @@ export default function App() {
               <div>
                 <p className="eyebrow">Current project</p>
                 <h1>{selectedProject.display_name}</h1>
+                <div
+                  className="llm-selector-bar"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    background: "#f0fdf4",
+                    border: "1px solid #bbf7d0",
+                    borderRadius: "8px",
+                    padding: "6px 12px",
+                    marginTop: "10px"
+                  }}
+                >
+                  <label
+                    htmlFor="llm-select"
+                    style={{
+                      fontSize: "0.82rem",
+                      fontWeight: 700,
+                      color: "#166534",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "5px"
+                    }}
+                  >
+                    <span>🤖 LLM 모델:</span>
+                  </label>
+                  <select
+                    id="llm-select"
+                    aria-label="대본 및 분석 LLM 모델 선택"
+                    value={selectedLlm}
+                    onChange={(e) => handleLlmChange(e.target.value)}
+                    style={{
+                      padding: "4px 8px",
+                      borderRadius: "6px",
+                      border: "1px solid #86efac",
+                      background: "#ffffff",
+                      color: "#0f172a",
+                      fontSize: "0.82rem",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      outline: "none"
+                    }}
+                  >
+                    <option value="gemini-2.5-flash">⚡ Google Gemini 2.5 Flash (고속 / 추천)</option>
+                    <option value="gemini-1.5-pro">🧠 Google Gemini 1.5 Pro (심층 분석)</option>
+                    <option value="gpt-4.1-mini">⚙️ OpenAI GPT-4.1 Mini (표준)</option>
+                    <option value="gpt-4o">🌟 OpenAI GPT-4o (고지능)</option>
+                  </select>
+                  <span style={{ fontSize: "0.75rem", color: "#15803d", fontWeight: 500 }}>
+                    {selectedLlm.startsWith("gemini") ? "✨ Gemini API 키 사용" : "🔑 OpenAI API 키 사용"}
+                  </span>
+                </div>
               </div>
               <div className="hero-side">
                 <div style={{ display: "flex", gap: "8px" }}>
@@ -906,6 +972,7 @@ export default function App() {
                 analysisMarkdown={referenceState?.analysis_markdown ?? null}
                 isBusy={isAnalysisBusy}
                 onAnalyze={handleAnalyzeReference}
+                selectedLlm={selectedLlm}
               />
               <CandidateDraftsPanel
                 candidates={scriptsState?.candidates ?? []}
@@ -915,6 +982,7 @@ export default function App() {
                 selectedCandidateId={scriptsState?.selected_candidate?.candidate_id ?? null}
                 videoTitle={videoTitle}
                 onTitleChange={handleTitleChange}
+                selectedLlm={selectedLlm}
               />
               <FinalScriptPanel
                 finalScript={scriptsState?.final_script ?? null}
@@ -924,6 +992,7 @@ export default function App() {
                 selectedCandidate={scriptsState?.selected_candidate ?? null}
                 ttsValidation={scriptsState?.tts_validation ?? null}
                 loopValidation={scriptsState?.loop_validation ?? null}
+                selectedLlm={selectedLlm}
               />
               <ProductionPanel
                 hasFinalScript={Boolean(scriptsState?.final_script || selectedProject.generated_files?.final_script)}

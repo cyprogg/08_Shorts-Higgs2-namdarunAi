@@ -11,6 +11,7 @@ interface FinalScriptPanelProps {
   readonly selectedCandidate: ScriptCandidate | null;
   readonly ttsValidation: TtsValidationResult | null;
   readonly loopValidation?: LoopValidationResult | null;
+  readonly selectedLlm?: string;
 }
 
 export function FinalScriptPanel({
@@ -20,7 +21,8 @@ export function FinalScriptPanel({
   onUpdateFinalScript,
   selectedCandidate,
   ttsValidation,
-  loopValidation
+  loopValidation,
+  selectedLlm
 }: FinalScriptPanelProps) {
   const [feedback, setFeedback] = useState("");
   const [refineFeedback, setRefineFeedback] = useState("");
@@ -71,7 +73,24 @@ export function FinalScriptPanel({
       <div className="section-header">
         <div>
           <p className="eyebrow">Script</p>
-          <h2 id="final-script-title">Final TTS script</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <h2 id="final-script-title">Final TTS script</h2>
+            {selectedLlm && (
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  background: "#f0fdf4",
+                  color: "#166534",
+                  border: "1px solid #bbf7d0",
+                  padding: "2px 8px",
+                  borderRadius: "10px",
+                  fontWeight: 600
+                }}
+              >
+                🤖 {selectedLlm}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

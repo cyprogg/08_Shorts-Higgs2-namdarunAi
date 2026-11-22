@@ -172,9 +172,10 @@ class SelectScriptCandidateRequest(BaseModel):
 
 
 class FinalizeScriptRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     feedback: str = Field(default="", max_length=2000)
+    model: str = Field(default="", max_length=100)
 
     @field_validator("feedback")
     @classmethod
@@ -186,6 +187,7 @@ class GenerateCandidatesRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     feedback: str = Field(default="", max_length=2000)
+    model: str = Field(default="", max_length=100)
 
     @field_validator("feedback")
     @classmethod

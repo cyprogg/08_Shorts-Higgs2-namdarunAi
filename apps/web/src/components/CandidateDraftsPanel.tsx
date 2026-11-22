@@ -9,6 +9,7 @@ interface CandidateDraftsPanelProps {
   readonly selectedCandidateId: string | null;
   readonly videoTitle?: string;
   readonly onTitleChange?: (title: string) => void;
+  readonly selectedLlm?: string;
 }
 
 function formatCandidateType(value: ScriptCandidate["candidate_type"]): string {
@@ -34,6 +35,7 @@ export function CandidateDraftsPanel({
   selectedCandidateId,
   videoTitle,
   onTitleChange,
+  selectedLlm
 }: CandidateDraftsPanelProps) {
   const [feedback, setFeedback] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -52,7 +54,24 @@ export function CandidateDraftsPanel({
       <div className="section-header">
         <div>
           <p className="eyebrow">Candidates & Drafts</p>
-          <h2 id="candidates-title">Script drafts</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <h2 id="candidates-title">Script drafts</h2>
+            {selectedLlm && (
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  background: "#f0fdf4",
+                  color: "#166534",
+                  border: "1px solid #bbf7d0",
+                  padding: "2px 8px",
+                  borderRadius: "10px",
+                  fontWeight: 600
+                }}
+              >
+                🤖 {selectedLlm}
+              </span>
+            )}
+          </div>
         </div>
         <button
           className="secondary-button"

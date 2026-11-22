@@ -300,6 +300,34 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /Generate candidates/i }));
 
     await waitFor(() => expect(fetchScriptsStateMock).toHaveBeenCalledWith(project.project_id));
-    await waitFor(() => expect(generateScriptCandidatesMock).toHaveBeenCalledWith(project.project_id));
+    await waitFor(() =>
+      expect(generateScriptCandidatesMock).toHaveBeenCalledWith(
+        project.project_id,
+        undefined,
+        "gemini-2.5-flash"
+      )
+    );
+  });
+
+  it("allows selecting a different LLM model from the dashboard", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole("heading", { name: project.display_name });
+    const select = screen.getByRole("combobox", { name: /대본 및 분석 LLM 모델 선택/i });
+    expect(select).toBeInTheDocument();
+    expect(select).toHaveValue("gemini-2.5-flash");
+
+    await user.selectOptions(select, "gpt-4o");
+    expect(select).toHaveValue("gpt-4o");
+
+    await user.click(screen.getByRole("button", { name: /Generate candidates/i }));
+    await waitFor(() =>
+      expect(generateScriptCandidatesMock).toHaveBeenCalledWith(
+        project.project_id,
+        undefined,
+        "gpt-4o"
+      )
+    );
   });
 });

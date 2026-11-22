@@ -90,14 +90,21 @@ def create_scripts_router(
 
             reference_script = script_path.read_text(encoding="utf-8")
             reference_analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
+
+            selected_model = (payload.model if payload and payload.model else "").strip()
+            if not selected_model:
+                selected_model = settings.gemini_model if (settings.gemini_api_key and not settings.openai_api_key) else settings.openai_analysis_model
+            is_gemini = "gemini" in selected_model.lower()
+            provider_name = "gemini" if is_gemini else "openai"
+
             job = append_job(
                 outputs,
                 project_id,
                 "script_candidates",
                 "Generate script candidates",
                 input_paths=[REFERENCE_SCRIPT_FILE, REFERENCE_ANALYSIS_FILE],
-                provider="openai",
-                command=settings.openai_analysis_model,
+                provider=provider_name,
+                command=selected_model,
             )
             job_id = job.job_id
             update_job_state(
@@ -105,9 +112,10 @@ def create_scripts_router(
                 project_id,
                 job.job_id,
                 "running",
-                "1차: 과학적 팩트/수치 기반 대본 본문 작성 중...",
+                f"1차: 과학적 팩트/수치 기반 대본 본문 작성 중... ({selected_model})",
             )
-            client = script_client_factory(settings.openai_api_key, settings.openai_analysis_model)
+            api_key = settings.gemini_api_key if is_gemini else settings.openai_api_key
+            client = script_client_factory(api_key, selected_model)
             prompt = build_candidate_generation_prompt(reference_script, reference_analysis, feedback)
             response_payload = client.analyze(prompt)
             candidates = validate_candidate_payload(response_payload)
@@ -197,23 +205,30 @@ def create_scripts_router(
 
             current_script = script_state.final_script
 
+            selected_model = (payload.model if payload and payload.model else "").strip()
+            if not selected_model:
+                selected_model = settings.gemini_model if (settings.gemini_api_key and not settings.openai_api_key) else settings.openai_analysis_model
+            is_gemini = "gemini" in selected_model.lower()
+            provider_name = "gemini" if is_gemini else "openai"
+
             job = append_job(
                 outputs,
                 project_id,
                 "final_script",
                 "Finalize TTS script",
                 input_paths=[SELECTED_SCRIPT_CANDIDATE_FILE],
-                provider="openai",
-                command=settings.openai_analysis_model,
+                provider=provider_name,
+                command=selected_model,
             )
             job_id = job.job_id
-            update_job_state(outputs, project_id, job.job_id, "running", "1차: 피드백 반영 최종 낭독 대본 완성 중...")
+            update_job_state(outputs, project_id, job.job_id, "running", f"1차: 피드백 반영 최종 낭독 대본 완성 중... ({selected_model})")
             verbatim = extract_verbatim_script_from_feedback(payload.feedback)
             if verbatim:
                 final_script = verbatim
                 display_script = verbatim
             else:
-                client = script_client_factory(settings.openai_api_key, settings.openai_analysis_model)
+                api_key = settings.gemini_api_key if is_gemini else settings.openai_api_key
+                client = script_client_factory(api_key, selected_model)
                 response = client.analyze(build_final_script_prompt(selected, payload.feedback, current_final_script=current_script))
                 tail_bridge = selected.loop_design.tail_bridge if selected.loop_design else ""
                 final_script, display_script, returned_tail_bridge = extract_final_scripts(response, hook=selected.hook, tail_bridge=tail_bridge)

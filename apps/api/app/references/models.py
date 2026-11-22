@@ -95,6 +95,10 @@ class SelectReferenceRequest(BaseModel):
         return _bounded_non_empty(value, "video_id", 32)
 
 
+class AnalyzeReferenceRequest(BaseModel):
+    model: Optional[str] = Field(default=None, max_length=100)
+
+
 class ReferenceCandidate(BaseModel):
     video_id: str = Field(max_length=32)
     url: str = Field(max_length=500)
